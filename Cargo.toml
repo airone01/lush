@@ -4,4 +4,5 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+home = "0.5.5"
 whoami = { version = "1.4.1", features = [] }

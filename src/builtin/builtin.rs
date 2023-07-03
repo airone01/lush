@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use crate::builtin::dir::{builtin_cd, builtin_pwd};
 use crate::builtin::echo::builtin_echo;
 use crate::builtin::who::builtin_whoami;
 use crate::command::Command;
@@ -28,19 +29,13 @@ impl FromStr for BuiltIn {
 
 pub fn process_command(command: Command) -> i32 {
     match BuiltIn::from_str(&command.keyword) {
-        Ok(BuiltIn::Cd) => {
-            println!("Cd");
-            0
-        }
+        Ok(BuiltIn::Cd) => builtin_cd(command.args),
         Ok(BuiltIn::Echo) => builtin_echo(command.args),
         Ok(BuiltIn::History) => {
             println!("History");
             0
         }
-        Ok(BuiltIn::Pwd) => {
-            println!("Pwd");
-            0
-        }
+        Ok(BuiltIn::Pwd) => builtin_pwd(),
         Ok(BuiltIn::WhoAmI) => builtin_whoami(),
         Err(_) => {
             println!("Command not found: {}", command.keyword);
