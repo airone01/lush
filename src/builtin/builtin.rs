@@ -41,7 +41,7 @@ pub fn process_command(command: Command) -> i32 {
             println!("Pwd");
             0
         }
-        Ok(BuiltIn::WhoAmI) => builtin_whoami(command.args),
+        Ok(BuiltIn::WhoAmI) => builtin_whoami(),
         Err(_) => {
             println!("Command not found: {}", command.keyword);
             1

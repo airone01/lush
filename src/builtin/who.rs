@@ -1,4 +1,4 @@
-pub fn builtin_whoami(args: Vec<String>) -> i32 {
+pub fn builtin_whoami() -> i32 {
     println!("{}", get_user_username());
     0
 }
