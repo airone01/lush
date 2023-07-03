@@ -2,3 +2,6 @@
 name = "lush"
 version = "0.0.1"
 edition = "2021"
+
+[dependencies]
+whoami = { version = "1.4.1", features = [] }
