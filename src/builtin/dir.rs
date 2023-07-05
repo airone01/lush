@@ -4,6 +4,12 @@ use std::env::set_current_dir;
 use std::path::{Path, PathBuf};
 
 pub fn builtin_cd(args: Vec<String>) -> i32 {
+    if args.len() > 1 {
+        println!("Too many arguments");
+        return 7;
+    }
+    let input_path = args[0].clone();
+
     let cwd = match get_cwd(false) {
         Ok(cwd) => cwd,
         Err(error) => {
@@ -12,7 +18,7 @@ pub fn builtin_cd(args: Vec<String>) -> i32 {
         }
     };
 
-    let asb_path = match resolve_path(args, cwd, home_dir, true) {
+    let asb_path = match resolve_path(input_path, cwd, home_dir, true) {
         Ok(path) => path,
         Err(error) => return error,
     };
@@ -29,36 +35,36 @@ pub fn builtin_cd(args: Vec<String>) -> i32 {
 }
 
 fn resolve_path(
-    args: Vec<String>,
+    input_path: String,
     cwd: String,
     get_home: fn() -> Option<PathBuf>,
     check_dir: bool,
 ) -> Result<String, i32> {
-    let path: String;
-    if args[0].starts_with("~") || args.len() == 0 {
+    let computed_path: String;
+    if input_path.starts_with("~") || input_path.len() == 0 {
         if let Some(home) = get_home() {
-            path = args[0].replace("~", home.to_str().unwrap());
+            computed_path = input_path.replace("~", home.to_str().unwrap());
         } else {
             println!("The home directory doesn't exist.");
             return Err(2);
         }
     } else {
-        path = args[0].clone();
+        computed_path = input_path.clone();
     }
 
-    if let Ok(asb_path) = Path::new(&path).absolutize_from(cwd) {
+    if let Ok(asb_path) = Path::new(&computed_path).absolutize_from(cwd) {
         if !check_dir || asb_path.exists() {
             if !check_dir || asb_path.is_dir() {
                 return Ok(asb_path.to_string_lossy().to_string());
             } else {
-                println!("Not a directory: {:?}", &path);
+                println!("Not a directory: {:?}", &computed_path);
                 return Err(20);
             }
         }
-        println!("No such file or directory: {:?}", &path);
+        println!("No such file or directory: {:?}", &computed_path);
         return Err(2);
     }
-    println!("Invalid path: {:?}", &path);
+    println!("Invalid path: {:?}", &computed_path);
     Err(22)
 }
 
@@ -138,7 +144,7 @@ mod unittest_dir {
     #[ignore = "mock function"]
     fn resolve_path_trimmed(input: &str) -> Result<String, i32> {
         resolve_path(
-            vec![input.to_string()],
+            input.to_string(),
             "/home/user".to_string(),
             mock_get_home,
             false,
@@ -326,12 +332,7 @@ mod unittest_dir {
     fn error_enoent_no_home() {
         assert_eq!(
             Err(2),
-            resolve_path(
-                vec!["~".to_string()],
-                "/home/user".to_string(),
-                || None,
-                false
-            )
+            resolve_path("~".to_string(), "/home/user".to_string(), || None, false)
         );
     }
 
@@ -340,13 +341,10 @@ mod unittest_dir {
         assert_eq!(
             Err(2),
             resolve_path(
-                vec![rand::Rng::sample_iter(
-                    rand::thread_rng(),
-                    &rand::distributions::Alphanumeric
-                )
-                .take(7)
-                .map(char::from)
-                .collect()],
+                rand::Rng::sample_iter(rand::thread_rng(), &rand::distributions::Alphanumeric)
+                    .take(7)
+                    .map(char::from)
+                    .collect(),
                 "/".to_string(),
                 || None,
                 true
@@ -362,7 +360,7 @@ mod unittest_dir {
 
         assert_eq!(
             Err(20),
-            resolve_path(vec![path.to_string_lossy().to_string()], cwd, || None, true)
+            resolve_path(path.to_string_lossy().to_string(), cwd, || None, true)
         );
     }
 
@@ -374,12 +372,7 @@ mod unittest_dir {
 
         assert_eq!(
             Ok(path.to_string_lossy().to_string()),
-            resolve_path(
-                vec![path.to_string_lossy().to_string()],
-                cwd,
-                || None,
-                false
-            )
+            resolve_path(path.to_string_lossy().to_string(), cwd, || None, false)
         );
     }
 }
