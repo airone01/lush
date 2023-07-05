@@ -40,16 +40,27 @@ fn resolve_path(
     get_home: fn() -> Option<PathBuf>,
     check_dir: bool,
 ) -> Result<String, i32> {
+    let trimmed_input_path = input_path.trim().to_string();
     let computed_path: String;
-    if input_path.starts_with("~") || input_path.len() == 0 {
+    let is_empty = trimmed_input_path.len() == 0;
+    if trimmed_input_path.starts_with("~") || is_empty {
         if let Some(home) = get_home() {
-            computed_path = input_path.replace("~", home.to_str().unwrap());
+            if is_empty {
+                computed_path = home.to_str().unwrap().to_string();
+            } else if trimmed_input_path.starts_with("~/") {
+                computed_path =
+                    trimmed_input_path.replace("~/", &format!("{}/", home.to_str().unwrap()));
+            } else if trimmed_input_path == "~" {
+                computed_path = trimmed_input_path.replace("~", home.to_str().unwrap());
+            } else {
+                computed_path = trimmed_input_path.clone();
+            }
         } else {
             println!("The home directory doesn't exist.");
             return Err(2);
         }
     } else {
-        computed_path = input_path.clone();
+        computed_path = trimmed_input_path.clone();
     }
 
     if let Ok(asb_path) = Path::new(&computed_path).absolutize_from(cwd) {
@@ -129,19 +140,23 @@ pub fn get_cwd(shorten_when_possible: bool) -> Result<String, std::io::Error> {
 // - error: `...`
 // - error: dir doesn't exist
 // - error: dir isn't a directory
-// - random path
+// - temp path
+// - error: too many arguments
+// - " ~ "
+// - ~ dir
+// - dir
+// - dir/~
+// - cd to temp path
 #[cfg(test)]
 mod unittest_dir {
     use test_dir::{DirBuilder, FileType, TestDir};
 
     use super::*; // get all the functions from the parent file
 
-    #[ignore = "mock function"]
     fn mock_get_home() -> Option<PathBuf> {
         Some(PathBuf::from("/home/user"))
     }
 
-    #[ignore = "mock function"]
     fn resolve_path_trimmed(input: &str) -> Result<String, i32> {
         resolve_path(
             input.to_string(),
@@ -365,7 +380,7 @@ mod unittest_dir {
     }
 
     #[test]
-    fn random_path() {
+    fn temp_path() {
         let cwd = get_cwd(false).expect("should find cwd in test environment");
         let temp = TestDir::temp().create("test/dir", FileType::Dir);
         let path = temp.path("test/dir");
@@ -374,5 +389,55 @@ mod unittest_dir {
             Ok(path.to_string_lossy().to_string()),
             resolve_path(path.to_string_lossy().to_string(), cwd, || None, false)
         );
+    }
+
+    #[test]
+    fn error_too_many_args() {
+        assert_eq!(
+            7,
+            builtin_cd(vec![
+                "one".to_string(),
+                "two".to_string(),
+                "three".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn space_tilde_space() {
+        assert_eq!(Ok("/home/user".to_string()), resolve_path_trimmed(" ~ "));
+    }
+
+    #[test]
+    fn tilde_dir() {
+        assert_eq!(
+            Ok("/home/user/~ dir".to_string()),
+            resolve_path_trimmed("~ dir")
+        );
+    }
+
+    #[test]
+    fn dir() {
+        assert_eq!(
+            Ok("/home/user/dir".to_string()),
+            resolve_path_trimmed("dir")
+        );
+    }
+
+    #[test]
+    fn dir_slash_tilde() {
+        assert_eq!(
+            Ok("/home/user/dir/~".to_string()),
+            resolve_path_trimmed("dir/~")
+        );
+    }
+
+    #[test]
+    #[ignore = "breaks `error_not_dir` and `temp_path`"]
+    fn cd_to_temp() {
+        let temp = TestDir::temp().create("test/dir", FileType::Dir);
+        let path = temp.path("test/dir");
+
+        assert_eq!(0, builtin_cd(vec![path.to_string_lossy().to_string()]));
     }
 }
