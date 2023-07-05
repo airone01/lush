@@ -6,4 +6,6 @@ edition = "2021"
 [dependencies]
 home = "0.5.5"
 path-absolutize = { version = "3.1.0", features = [ "once_cell_cache" ]}
+rand = "0.8.5"
+test_dir = "0.2.0"
 whoami = { version = "1.4.1", features = [] }

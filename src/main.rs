@@ -5,7 +5,7 @@ mod command;
 mod tokenize;
 
 use crate::builtin::builtin::process_command;
-use crate::builtin::dir::get_current_dir_string;
+use crate::builtin::dir::get_cwd;
 use crate::builtin::who::{get_user_hostname, get_user_username};
 use crate::tokenize::tokenize_command;
 
@@ -15,7 +15,7 @@ fn main() {
             "{}@{}:{} ",
             get_user_username(),
             get_user_hostname(),
-            get_current_dir_string(true).unwrap_or("???".to_string())
+            get_cwd(true).unwrap_or("???".to_string())
         );
         io::stdout().flush().unwrap();
 

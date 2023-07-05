@@ -1,10 +1,18 @@
 use home::home_dir;
 use path_absolutize::*;
 use std::env::set_current_dir;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn builtin_cd(args: Vec<String>) -> i32 {
-    let asb_path = match resolve_path(args, false) {
+    let cwd = match get_cwd(false) {
+        Ok(cwd) => cwd,
+        Err(error) => {
+            println!("Could not get current directory: {:?}", error);
+            return 1;
+        }
+    };
+
+    let asb_path = match resolve_path(args, cwd, home_dir, true) {
         Ok(path) => path,
         Err(error) => return error,
     };
@@ -20,15 +28,16 @@ pub fn builtin_cd(args: Vec<String>) -> i32 {
     }
 }
 
-fn resolve_path(args: Vec<String>, dont_check_dir: bool) -> Result<String, i32> {
+fn resolve_path(
+    args: Vec<String>,
+    cwd: String,
+    get_home: fn() -> Option<PathBuf>,
+    check_dir: bool,
+) -> Result<String, i32> {
     let path: String;
     if args[0].starts_with("~") || args.len() == 0 {
-        if let Some(home) = home_dir() {
-            if args.len() == 0 {
-                path = home.to_string_lossy().to_string();
-            } else {
-                path = home.join(&args[0][2..]).to_string_lossy().to_string();
-            }
+        if let Some(home) = get_home() {
+            path = args[0].replace("~", home.to_str().unwrap());
         } else {
             println!("The home directory doesn't exist.");
             return Err(2);
@@ -37,21 +46,24 @@ fn resolve_path(args: Vec<String>, dont_check_dir: bool) -> Result<String, i32> 
         path = args[0].clone();
     }
 
-    if let Ok(asb_path) = Path::new(&path).absolutize() {
-        if dont_check_dir || asb_path.is_dir() {
-            Ok(asb_path.to_string_lossy().to_string())
-        } else {
-            println!("Not a directory: {:?}", &path);
-            Err(20)
+    if let Ok(asb_path) = Path::new(&path).absolutize_from(cwd) {
+        if !check_dir || asb_path.exists() {
+            if !check_dir || asb_path.is_dir() {
+                return Ok(asb_path.to_string_lossy().to_string());
+            } else {
+                println!("Not a directory: {:?}", &path);
+                return Err(20);
+            }
         }
-    } else {
-        println!("Invalid path: {:?}", &path);
-        Err(22)
+        println!("No such file or directory: {:?}", &path);
+        return Err(2);
     }
+    println!("Invalid path: {:?}", &path);
+    Err(22)
 }
 
 pub fn builtin_pwd() -> i32 {
-    if let Ok(pwd_dir) = get_current_dir_string(false) {
+    if let Ok(pwd_dir) = get_cwd(false) {
         println!("{}", pwd_dir);
         0
     } else {
@@ -60,7 +72,7 @@ pub fn builtin_pwd() -> i32 {
     }
 }
 
-pub fn get_current_dir_string(shorten_when_possible: bool) -> Result<String, std::io::Error> {
+pub fn get_cwd(shorten_when_possible: bool) -> Result<String, std::io::Error> {
     match std::env::current_dir() {
         Ok(path_buf) => {
             if shorten_when_possible && path_buf == home_dir().unwrap() {
@@ -70,5 +82,304 @@ pub fn get_current_dir_string(shorten_when_possible: bool) -> Result<String, std
             }
         }
         Err(error) => Err(error),
+    }
+}
+
+// List of unit tests for the builtin_dir module
+// - empty
+// - .
+// - ./
+// - ./dir
+// - ./dir/
+// - ./.
+// - ././
+// - ./..
+// - ./../
+// - ..
+// - ../
+// - ../dir
+// - ../dir/
+// - ../.
+// - .././
+// - ../..
+// - ../../
+// - ~
+// - ~/
+// - ~/dir
+// - ~/dir/
+// - ~/.
+// - ~/./
+// - ~/..
+// - ~/../
+// - /
+// - /dir
+// - /dir/
+// - /.
+// - /./
+// - /..
+// - /../
+// - /~
+// - error: can't find home directory
+// - error: `...`
+// - error: dir doesn't exist
+// - error: dir isn't a directory
+// - random path
+#[cfg(test)]
+mod unittest_dir {
+    use test_dir::{DirBuilder, FileType, TestDir};
+
+    use super::*; // get all the functions from the parent file
+
+    #[ignore = "mock function"]
+    fn mock_get_home() -> Option<PathBuf> {
+        Some(PathBuf::from("/home/user"))
+    }
+
+    #[ignore = "mock function"]
+    fn resolve_path_trimmed(input: &str) -> Result<String, i32> {
+        resolve_path(
+            vec![input.to_string()],
+            "/home/user".to_string(),
+            mock_get_home,
+            false,
+        )
+    }
+
+    #[test]
+    fn empty() {
+        assert_eq!(Ok("/home/user".to_string()), resolve_path_trimmed(""));
+    }
+
+    #[test]
+    fn dot() {
+        assert_eq!(Ok("/home/user".to_string()), resolve_path_trimmed("."));
+    }
+
+    #[test]
+    fn dot_slash() {
+        assert_eq!(Ok("/home/user".to_string()), resolve_path_trimmed("./"));
+    }
+
+    #[test]
+    fn dot_slash_dir() {
+        assert_eq!(
+            Ok("/home/user/dir".to_string()),
+            resolve_path_trimmed("./dir")
+        );
+    }
+
+    #[test]
+    fn dot_slash_dir_slash() {
+        assert_eq!(
+            Ok("/home/user/dir".to_string()),
+            resolve_path_trimmed("./dir/")
+        );
+    }
+
+    #[test]
+    fn dot_slash_dot() {
+        assert_eq!(Ok("/home/user".to_string()), resolve_path_trimmed("./."));
+    }
+
+    #[test]
+    fn dot_slash_dot_slash() {
+        assert_eq!(Ok("/home/user".to_string()), resolve_path_trimmed("././"));
+    }
+
+    #[test]
+    fn dot_slash_dot_dot() {
+        assert_eq!(Ok("/home".to_string()), resolve_path_trimmed("./.."));
+    }
+
+    #[test]
+    fn dot_slash_dot_dot_slash() {
+        assert_eq!(Ok("/home".to_string()), resolve_path_trimmed("./../"));
+    }
+
+    #[test]
+    fn dot_dot() {
+        assert_eq!(Ok("/home".to_string()), resolve_path_trimmed(".."));
+    }
+
+    #[test]
+    fn dot_dot_slash() {
+        assert_eq!(Ok("/home".to_string()), resolve_path_trimmed("../"));
+    }
+
+    #[test]
+    fn dot_dot_slash_dir() {
+        assert_eq!(Ok("/home/dir".to_string()), resolve_path_trimmed("../dir"));
+    }
+
+    #[test]
+    fn dot_dot_slash_dir_slash() {
+        assert_eq!(Ok("/home/dir".to_string()), resolve_path_trimmed("../dir/"));
+    }
+
+    #[test]
+    fn dot_dot_slash_dot() {
+        assert_eq!(Ok("/home".to_string()), resolve_path_trimmed("../."));
+    }
+
+    #[test]
+    fn dot_dot_slash_dot_slash() {
+        assert_eq!(Ok("/home".to_string()), resolve_path_trimmed(".././"));
+    }
+
+    #[test]
+    fn dot_dot_slash_dot_dot() {
+        assert_eq!(Ok("/".to_string()), resolve_path_trimmed("../.."));
+    }
+
+    #[test]
+    fn dot_dot_slash_dot_dot_slash() {
+        assert_eq!(Ok("/".to_string()), resolve_path_trimmed("../../"));
+    }
+
+    #[test]
+    fn tilde() {
+        assert_eq!(Ok("/home/user".to_string()), resolve_path_trimmed("~"));
+    }
+
+    #[test]
+    fn tilde_slash() {
+        assert_eq!(Ok("/home/user".to_string()), resolve_path_trimmed("~/"));
+    }
+
+    #[test]
+    fn tilde_slash_dir() {
+        assert_eq!(
+            Ok("/home/user/dir".to_string()),
+            resolve_path_trimmed("~/dir")
+        );
+    }
+
+    #[test]
+    fn tilde_slash_dir_slash() {
+        assert_eq!(
+            Ok("/home/user/dir".to_string()),
+            resolve_path_trimmed("~/dir/")
+        );
+    }
+
+    #[test]
+    fn tilde_slash_dot() {
+        assert_eq!(Ok("/home/user".to_string()), resolve_path_trimmed("~/."));
+    }
+
+    #[test]
+    fn tilde_slash_dot_slash() {
+        assert_eq!(Ok("/home/user".to_string()), resolve_path_trimmed("~/./"));
+    }
+
+    #[test]
+    fn tilde_slash_dot_dot() {
+        assert_eq!(Ok("/home".to_string()), resolve_path_trimmed("~/.."));
+    }
+
+    #[test]
+    fn tilde_slash_dot_dot_slash() {
+        assert_eq!(Ok("/home".to_string()), resolve_path_trimmed("~/../"));
+    }
+
+    #[test]
+    fn slash() {
+        assert_eq!(Ok("/".to_string()), resolve_path_trimmed("/"));
+    }
+
+    #[test]
+    fn slash_dir() {
+        assert_eq!(Ok("/dir".to_string()), resolve_path_trimmed("/dir"));
+    }
+
+    #[test]
+    fn slash_dir_slash() {
+        assert_eq!(Ok("/dir".to_string()), resolve_path_trimmed("/dir/"));
+    }
+
+    #[test]
+    fn slash_dot() {
+        assert_eq!(Ok("/".to_string()), resolve_path_trimmed("/."));
+    }
+
+    #[test]
+    fn slash_dot_slash() {
+        assert_eq!(Ok("/".to_string()), resolve_path_trimmed("/./"));
+    }
+
+    #[test]
+    fn slash_dot_dot() {
+        assert_eq!(Ok("/".to_string()), resolve_path_trimmed("/.."));
+    }
+
+    #[test]
+    fn slash_dot_dot_slash() {
+        assert_eq!(Ok("/".to_string()), resolve_path_trimmed("/../"));
+    }
+
+    #[test]
+    fn slash_tilde() {
+        assert_eq!(Ok("/~".to_string()), resolve_path_trimmed("/~"));
+    }
+
+    #[test]
+    fn error_enoent_no_home() {
+        assert_eq!(
+            Err(2),
+            resolve_path(
+                vec!["~".to_string()],
+                "/home/user".to_string(),
+                || None,
+                false
+            )
+        );
+    }
+
+    #[test]
+    fn error_enoent() {
+        assert_eq!(
+            Err(2),
+            resolve_path(
+                vec![rand::Rng::sample_iter(
+                    rand::thread_rng(),
+                    &rand::distributions::Alphanumeric
+                )
+                .take(7)
+                .map(char::from)
+                .collect()],
+                "/".to_string(),
+                || None,
+                true
+            )
+        );
+    }
+
+    #[test]
+    fn error_not_dir() {
+        let cwd = get_cwd(false).expect("should find cwd in test environment");
+        let temp = TestDir::temp().create("test/file", FileType::EmptyFile);
+        let path = temp.path("test/file");
+
+        assert_eq!(
+            Err(20),
+            resolve_path(vec![path.to_string_lossy().to_string()], cwd, || None, true)
+        );
+    }
+
+    #[test]
+    fn random_path() {
+        let cwd = get_cwd(false).expect("should find cwd in test environment");
+        let temp = TestDir::temp().create("test/dir", FileType::Dir);
+        let path = temp.path("test/dir");
+
+        assert_eq!(
+            Ok(path.to_string_lossy().to_string()),
+            resolve_path(
+                vec![path.to_string_lossy().to_string()],
+                cwd,
+                || None,
+                false
+            )
+        );
     }
 }
