@@ -15,7 +15,7 @@ fn main() {
             "{}@{}:{} ",
             get_user_username(),
             get_user_hostname(),
-            get_current_dir_string(true)
+            get_current_dir_string(true).unwrap_or("???".to_string())
         );
         io::stdout().flush().unwrap();
 

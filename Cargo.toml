@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 home = "0.5.5"
+path-absolutize = { version = "3.1.0", features = [ "once_cell_cache" ]}
 whoami = { version = "1.4.1", features = [] }
