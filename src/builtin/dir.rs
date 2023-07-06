@@ -19,7 +19,7 @@ pub fn builtin_cd(raw_args: Vec<String>) -> i32 {
                 .action(ArgAction::Set)
                 .default_value("~")
                 .value_name("PATH")
-                .help("The path to change to"),
+                .help("the path to change to"),
         )
         .try_get_matches_from(clap_args);
     let matches = match matches_result {
