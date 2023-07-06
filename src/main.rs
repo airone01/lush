@@ -25,7 +25,6 @@ fn main() {
             .expect("Failed to read line");
 
         let input_split = tokenize_command(input);
-        println!("DEBUG: {:?}", input_split);
 
         process_command(input_split);
     }
