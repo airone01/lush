@@ -35,7 +35,7 @@ pub fn process_command(command: Command) -> i32 {
             println!("History");
             0
         }
-        Ok(BuiltIn::Pwd) => builtin_pwd(),
+        Ok(BuiltIn::Pwd) => builtin_pwd(command.args),
         Ok(BuiltIn::WhoAmI) => builtin_whoami(),
         Err(_) => {
             println!("Command not found: {}", command.keyword);

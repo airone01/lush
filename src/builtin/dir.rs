@@ -107,7 +107,25 @@ fn resolve_path(
     Err(22)
 }
 
-pub fn builtin_pwd() -> i32 {
+pub fn builtin_pwd(raw_args: Vec<String>) -> i32 {
+    let mut clap_args = vec!["pwd".to_string()];
+    clap_args.extend(raw_args.clone());
+    // note that this ignores the fact that the command could have another name rather than "cd" (with aliases, etc.)
+    // too lazy to fix this right now
+
+    let matches_result = Command::new("cd")
+        .about("Lush built-in. Print the name of the current working directory.")
+        .author("Lush team")
+        .try_get_matches_from(clap_args);
+
+    match matches_result {
+        Ok(matches) => matches,
+        Err(error) => {
+            println!("{}", error);
+            return 1;
+        }
+    };
+
     if let Ok(pwd_dir) = get_cwd(false) {
         println!("{}", pwd_dir);
         0
