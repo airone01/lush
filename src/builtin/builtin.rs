@@ -2,7 +2,6 @@ use std::str::FromStr;
 
 use crate::builtin::dir::{builtin_cd, builtin_pwd};
 use crate::builtin::echo::builtin_echo;
-use crate::builtin::who::builtin_whoami;
 use crate::command::Command;
 
 pub enum BuiltIn {
@@ -10,7 +9,6 @@ pub enum BuiltIn {
     Echo,
     History,
     Pwd,
-    WhoAmI,
 }
 
 impl FromStr for BuiltIn {
@@ -21,7 +19,6 @@ impl FromStr for BuiltIn {
             "echo" => Ok(BuiltIn::Echo),
             "history" => Ok(BuiltIn::History),
             "pwd" => Ok(BuiltIn::Pwd),
-            "whoami" => Ok(BuiltIn::WhoAmI),
             _ => Err(()),
         }
     }
@@ -36,7 +33,6 @@ pub fn process_command(command: Command) -> i32 {
             0
         }
         Ok(BuiltIn::Pwd) => builtin_pwd(command.args),
-        Ok(BuiltIn::WhoAmI) => builtin_whoami(),
         Err(_) => {
             println!("Command not found: {}", command.keyword);
             1
