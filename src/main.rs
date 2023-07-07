@@ -7,9 +7,9 @@ use builtin::who::{get_user_hostname, get_user_username};
 use crossterm::cursor::{self, MoveTo, MoveToNextLine};
 use crossterm::event::KeyEventKind::Release;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use crossterm::queue;
 use crossterm::style::Print;
 use crossterm::terminal::{self, ClearType, EnableLineWrap, ScrollUp};
+use crossterm::{execute, queue};
 use tokenize::tokenize_command;
 
 mod builtin;
@@ -146,6 +146,16 @@ fn term() {
                     buff = next_term(&mut stdout, false, None);
                 }
                 Event::Key(KeyEvent {
+                    code: KeyCode::Left,
+                    ..
+                }) => {
+                    if buff.len() > 0 {
+                        buff.pop();
+                        queue!(stdout, Print("\x08")).unwrap();
+                        stdout.flush().unwrap();
+                    }
+                }
+                Event::Key(KeyEvent {
                     code: KeyCode::Backspace,
                     ..
                 }) => {
@@ -160,8 +170,15 @@ fn term() {
                     ..
                 }) => {
                     buff.push(char);
-                    queue!(stdout, Print(char)).unwrap();
-                    stdout.flush().unwrap();
+                    let (x, y) = cursor::position().unwrap();
+
+                    fn print_text(stdout: &mut Stdout) {
+                        print_prompt(stdout, get_prompt(), "".to_string());
+                        ()
+                    }
+
+                    print_nextln(&mut stdout, false, Some(&buff.clone()), print_text);
+                    execute!(stdout, MoveTo(x + 1, y)).unwrap();
                 }
                 _ => {
                     continue;
