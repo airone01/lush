@@ -4,11 +4,12 @@ use std::time::Duration;
 use builtin::builtin::process_command;
 use builtin::dir::get_cwd;
 use builtin::who::{get_user_hostname, get_user_username};
+use crossterm::cursor::{self, MoveTo, MoveToNextLine};
 use crossterm::event::KeyEventKind::Release;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::queue;
 use crossterm::style::Print;
-use crossterm::terminal::{self, ClearType, ScrollUp};
+use crossterm::terminal::{self, ClearType, EnableLineWrap, ScrollUp};
 use tokenize::tokenize_command;
 
 mod builtin;
@@ -37,22 +38,52 @@ fn get_prompt() -> String {
     )
 }
 
-fn next_term(stdout: &mut Stdout, scroll_up: bool, write_to_eol: Option<&str>) -> String {
-    match (write_to_eol, scroll_up) {
-        (Some(write_to_eol), true) => {
-            queue!(stdout, Print(write_to_eol), ScrollUp(1), Print("\r")).unwrap();
+fn print_nextln(
+    stdout: &mut Stdout,
+    newline: bool,
+    write_to_eol: Option<&str>,
+    print_text: fn(stdout: &mut Stdout) -> (),
+) {
+    let (_, y) = cursor::position().unwrap();
+    let (_, ly) = terminal::size().unwrap();
+
+    match (write_to_eol, newline, y >= ly - 1) {
+        (Some(write_to_eol), true, false) => {
+            queue!(stdout, Print(write_to_eol), MoveToNextLine(1), Print("\r")).unwrap();
         }
-        (Some(write_to_eol), false) => {
+        (Some(write_to_eol), true, true) => {
+            queue!(
+                stdout,
+                Print(write_to_eol),
+                ScrollUp(1),
+                MoveToNextLine(1),
+                Print("\r")
+            )
+            .unwrap();
+        }
+        (Some(write_to_eol), false, _) => {
             queue!(stdout, Print(write_to_eol), Print("\r")).unwrap();
         }
-        (None, true) => {
-            queue!(stdout, ScrollUp(1), Print("\r")).unwrap();
+        (None, true, true) => {
+            queue!(stdout, ScrollUp(1), MoveToNextLine(1), Print("\r")).unwrap();
         }
-        (None, false) => {
+        (None, true, false) => {
+            queue!(stdout, MoveToNextLine(1), Print("\r")).unwrap();
+        }
+        (None, false, _) => {
             queue!(stdout, Print("\r")).unwrap();
         }
     }
-    print_prompt(stdout, get_prompt(), "".to_string());
+    print_text(stdout);
+}
+
+fn next_term(stdout: &mut Stdout, newline: bool, write_to_eol: Option<&str>) -> String {
+    fn print_text(stdout: &mut Stdout) {
+        print_prompt(stdout, get_prompt(), "".to_string());
+        ()
+    }
+
+    print_nextln(stdout, newline, write_to_eol, print_text);
     "".to_string()
 }
 
@@ -84,7 +115,7 @@ fn term() {
                 }) => {
                     if buff.len() > 0 {
                         let command = tokenize_command(buff.clone());
-                        queue!(stdout, ScrollUp(1), Print("\r")).unwrap();
+                        queue!(stdout, MoveToNextLine(1), Print("\r")).unwrap();
                         process_command(command);
                         buff = next_term(&mut stdout, false, None);
                     } else {
@@ -98,6 +129,21 @@ fn term() {
                     ..
                 }) => {
                     buff = next_term(&mut stdout, true, Some("^C"));
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('l'),
+                    modifiers: KeyModifiers::CONTROL,
+                    kind: KeyEventKind::Press,
+                    ..
+                }) => {
+                    queue!(
+                        stdout,
+                        MoveTo(0, 0),
+                        terminal::Clear(ClearType::All),
+                        EnableLineWrap
+                    )
+                    .unwrap();
+                    buff = next_term(&mut stdout, false, None);
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Backspace,
