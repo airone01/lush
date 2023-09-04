@@ -7,9 +7,9 @@ use builtin::who::{get_user_hostname, get_user_username};
 use crossterm::cursor::{self, MoveTo, MoveToNextLine};
 use crossterm::event::KeyEventKind::Release;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::queue;
 use crossterm::style::Print;
 use crossterm::terminal::{self, ClearType, EnableLineWrap, ScrollUp};
-use crossterm::{execute, queue};
 use tokenize::tokenize_command;
 
 mod builtin;
@@ -113,14 +113,16 @@ fn term() {
                     code: KeyCode::Enter,
                     ..
                 }) => {
+                    let newline: bool;
                     if buff.len() > 0 {
                         let command = tokenize_command(buff.clone());
                         queue!(stdout, MoveToNextLine(1), Print("\r")).unwrap();
                         process_command(command);
-                        buff = next_term(&mut stdout, false, None);
+                        newline = false;
                     } else {
-                        buff = next_term(&mut stdout, true, None);
+                        newline = true;
                     }
+                    buff = next_term(&mut stdout, newline, None);
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('c'),
@@ -161,6 +163,7 @@ fn term() {
                 }) => {
                     if buff.len() > 0 {
                         buff.pop();
+
                         queue!(stdout, Print("\x08 \x08")).unwrap();
                         stdout.flush().unwrap();
                     }
@@ -170,15 +173,9 @@ fn term() {
                     ..
                 }) => {
                     buff.push(char);
-                    let (x, y) = cursor::position().unwrap();
 
-                    fn print_text(stdout: &mut Stdout) {
-                        print_prompt(stdout, get_prompt(), "".to_string());
-                        ()
-                    }
-
-                    print_nextln(&mut stdout, false, Some(&buff.clone()), print_text);
-                    execute!(stdout, MoveTo(x + 1, y)).unwrap();
+                    queue!(stdout, Print(char)).unwrap();
+                    stdout.flush().unwrap();
                 }
                 _ => {
                     continue;
