@@ -174,10 +174,34 @@ fn term() {
                     code: KeyCode::Backspace,
                     ..
                 }) => {
-                    if buff.len() > 0 {
-                        buff.pop();
+                    if buff.len() == 0 {
+                        continue;
+                    }
 
-                        execute!(stdout, Print("\x08 \x08")).unwrap();
+                    if position_relative_to_end == 0 {
+                        buff.pop();
+                        queue!(stdout, MoveLeft(1)).unwrap();
+                        queue!(stdout, Print(" ")).unwrap();
+                        queue!(stdout, MoveLeft(1)).unwrap();
+                        stdout.flush().unwrap();
+                    } else if position_relative_to_end != buff.len() {
+                        let buff_clone = buff.clone();
+                        let (left_part, right_part) =
+                            buff_clone.split_at(buff.len() - position_relative_to_end);
+                        let mut left_part_chars = left_part.chars();
+
+                        if left_part.len() < 2 {
+                            buff = right_part.to_string();
+                        } else {
+                            left_part_chars.next_back();
+                            buff = format!("{}{}", left_part_chars.as_str(), right_part);
+                        }
+
+                        queue!(stdout, MoveLeft(1)).unwrap();
+                        queue!(stdout, Print(right_part)).unwrap();
+                        queue!(stdout, Print(" ")).unwrap();
+                        queue!(stdout, MoveLeft(right_part.len() as u16 + 1)).unwrap();
+
                         stdout.flush().unwrap();
                     }
                 }
