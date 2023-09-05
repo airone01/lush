@@ -4,12 +4,12 @@ use std::time::Duration;
 use builtin::builtin::process_command;
 use builtin::dir::get_cwd;
 use builtin::who::{get_user_hostname, get_user_username};
-use crossterm::cursor::{self, MoveTo, MoveToNextLine};
+use crossterm::cursor::{self, MoveLeft, MoveRight, MoveTo, MoveToNextLine};
 use crossterm::event::KeyEventKind::Release;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use crossterm::queue;
 use crossterm::style::Print;
 use crossterm::terminal::{self, ClearType, EnableLineWrap, ScrollUp};
+use crossterm::{execute, queue};
 use tokenize::tokenize_command;
 
 mod builtin;
@@ -77,14 +77,14 @@ fn print_nextln(
     print_text(stdout);
 }
 
-fn next_term(stdout: &mut Stdout, newline: bool, write_to_eol: Option<&str>) -> String {
+fn next_term(stdout: &mut Stdout, newline: bool, write_to_eol: Option<&str>) -> (String, usize) {
     fn print_text(stdout: &mut Stdout) {
         print_prompt(stdout, get_prompt(), "".to_string());
         ()
     }
 
     print_nextln(stdout, newline, write_to_eol, print_text);
-    "".to_string()
+    ("".to_string(), 0)
 }
 
 fn print_prompt(stdout: &mut Stdout, prompt: String, buff: String) {
@@ -99,6 +99,7 @@ fn main() {
 fn term() {
     let mut buff = String::new();
     let mut stdout = setup_term();
+    let mut position_relative_to_end: usize = 0;
 
     reset_term(&mut stdout);
     print_prompt(&mut stdout, get_prompt(), buff.clone());
@@ -122,7 +123,7 @@ fn term() {
                     } else {
                         newline = true;
                     }
-                    buff = next_term(&mut stdout, newline, None);
+                    (buff, position_relative_to_end) = next_term(&mut stdout, newline, None);
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('c'),
@@ -130,7 +131,7 @@ fn term() {
                     kind: KeyEventKind::Press,
                     ..
                 }) => {
-                    buff = next_term(&mut stdout, true, Some("^C"));
+                    (buff, position_relative_to_end) = next_term(&mut stdout, true, Some("^C"));
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('l'),
@@ -145,15 +146,27 @@ fn term() {
                         EnableLineWrap
                     )
                     .unwrap();
-                    buff = next_term(&mut stdout, false, None);
+                    (buff, position_relative_to_end) = next_term(&mut stdout, false, None);
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Left,
                     ..
                 }) => {
-                    if buff.len() > 0 {
-                        buff.pop();
-                        queue!(stdout, Print("\x08")).unwrap();
+                    if buff.len() > 0 && position_relative_to_end < buff.len() {
+                        position_relative_to_end += 1;
+
+                        execute!(stdout, MoveLeft(1)).unwrap();
+                        stdout.flush().unwrap();
+                    }
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Right,
+                    ..
+                }) => {
+                    if position_relative_to_end > 0 {
+                        position_relative_to_end -= 1;
+
+                        execute!(stdout, MoveRight(1)).unwrap();
                         stdout.flush().unwrap();
                     }
                 }
@@ -164,7 +177,7 @@ fn term() {
                     if buff.len() > 0 {
                         buff.pop();
 
-                        queue!(stdout, Print("\x08 \x08")).unwrap();
+                        execute!(stdout, Print("\x08 \x08")).unwrap();
                         stdout.flush().unwrap();
                     }
                 }
@@ -172,9 +185,34 @@ fn term() {
                     code: KeyCode::Char(char),
                     ..
                 }) => {
-                    buff.push(char);
+                    if position_relative_to_end == 0 {
+                        buff.push(char);
+                        queue!(stdout, Print(char)).unwrap();
+                    } else {
+                        // add char to buff at length - relativeToEndPosition
+                        let mut new_buff = String::new();
+                        let mut i = 0;
+                        for c in buff.chars() {
+                            if i == buff.len() - position_relative_to_end {
+                                new_buff.push(char);
+                            }
+                            new_buff.push(c);
+                            i += 1;
+                        }
 
-                    queue!(stdout, Print(char)).unwrap();
+                        buff = new_buff.clone();
+
+                        // split buff at length - relativeToEndPosition
+                        let (_, right_part) =
+                            new_buff.split_at(buff.len() - position_relative_to_end - 1);
+                        queue!(stdout, Print(right_part)).unwrap();
+
+                        // move cursor back to where it was
+                        for _ in 1..right_part.len() {
+                            execute!(stdout, MoveLeft(1)).unwrap();
+                        }
+                    }
+
                     stdout.flush().unwrap();
                 }
                 _ => {
