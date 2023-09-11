@@ -174,7 +174,7 @@ fn term() {
                     code: KeyCode::Backspace,
                     ..
                 }) => {
-                    if buff.len() == 0 {
+                    if buff.len() == 0 || position_relative_to_end == buff.len() {
                         continue;
                     }
 
@@ -184,7 +184,7 @@ fn term() {
                         queue!(stdout, Print(" ")).unwrap();
                         queue!(stdout, MoveLeft(1)).unwrap();
                         stdout.flush().unwrap();
-                    } else if position_relative_to_end != buff.len() {
+                    } else {
                         let buff_clone = buff.clone();
                         let (left_part, right_part) =
                             buff_clone.split_at(buff.len() - position_relative_to_end);
@@ -204,6 +204,47 @@ fn term() {
 
                         stdout.flush().unwrap();
                     }
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Delete,
+                    ..
+                }) => {
+                    if buff.len() == 0 || position_relative_to_end == 0 {
+                        continue;
+                    }
+
+                    if position_relative_to_end == buff.len() {
+                        let mut chars = buff.chars();
+                        chars.next();
+                        buff = chars.as_str().to_string();
+                        queue!(stdout, Print(buff.clone())).unwrap();
+                        queue!(stdout, Print(" ")).unwrap();
+                        queue!(stdout, MoveLeft(buff.len() as u16 + 1)).unwrap();
+                        stdout.flush().unwrap();
+                    } else {
+                        let buff_clone = buff.clone();
+                        let (left_part, mut right_part) =
+                            buff_clone.split_at(buff.len() - position_relative_to_end);
+                        let mut right_part_chars = right_part.chars();
+
+                        if right_part.len() < 2 {
+                            buff = left_part.to_string();
+
+                            right_part = "";
+                        } else {
+                            right_part_chars.next();
+                            right_part = right_part_chars.as_str();
+                            buff = format!("{}{}", left_part, right_part_chars.as_str());
+                        }
+
+                        queue!(stdout, Print(right_part)).unwrap();
+                        queue!(stdout, Print(" ")).unwrap();
+                        queue!(stdout, MoveLeft(right_part.len() as u16 + 1)).unwrap();
+
+                        stdout.flush().unwrap();
+                    }
+
+                    position_relative_to_end -= 1;
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Char(char),
